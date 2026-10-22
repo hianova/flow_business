@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FLOW Business — Six-Pillar Deterministic Enterprise Control Plane</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #131a26;
+      --panel-alt: #182232;
+      --border: #253247;
+      --text: #e6edf3;
+      --muted: #8b9bb4;
+      --green: #2ea043;
+      --amber: #d29922;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --purple: #a371f7;
+      --cyan: #39c5cf;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(90deg, #0d131f 0%, #151f30 100%);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0.4px;
+    }
+    .brand p {
+      margin: 2px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .status-pill {
+      background: rgba(46, 160, 67, 0.15);
+      border: 1px solid var(--green);
+      color: #56d364;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 22px 28px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .kpi-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .kpi-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-top: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .pillar-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(410px, 1fr));
+      gap: 14px;
+    }
+    .pillar-card {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .pillar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .pillar-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .pillar-id {
+      font-size: 11px;
+      color: var(--cyan);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .pillar-theorem {
+      font-size: 11px;
+      color: var(--purple);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .pillar-advice {
+      font-size: 12px;
+      color: var(--text);
+      background: rgba(11, 15, 23, 0.55);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border-left: 3px solid var(--blue);
+    }
+    .exec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #1f2937;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--purple));
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--panel-alt);
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .badge-ok { background: rgba(46, 160, 67, 0.2); color: #56d364; border: 1px solid var(--green); }
+    .badge-warn { background: rgba(210, 153, 34, 0.2); color: #e3b341; border: 1px solid var(--amber); }
+    .badge-err { background: rgba(248, 81, 73, 0.2); color: #ff7b72; border: 1px solid var(--red); }
+    .badge-tier { background: rgba(163, 113, 247, 0.18); color: #d2a8ff; border: 1px solid var(--purple); }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .btn {
+      background: var(--blue);
+      color: #0b0f17;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-amber { background: var(--amber); color: #0b0f17; }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-bar {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 24px;
+      background: #1f2937;
+      border: 1px solid var(--blue);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>FLOW Business — Six-Pillar Enterprise Forensic Sidecar &amp; Ownership Control Plane</h1>
+      <p>Pure <code>.lean</code> Zero-Copy Kernel (P2P / O2C / Treasury / Trade RVC / HR &amp; Biotech / Marketing IVT) • Zero-Trust SoD Liability Ledger</p>
+    </div>
+    <div class="status-pill" id="engine-status">Loading Pure .lean Kernel...</div>
+  </header>
+
+  <main>
+    <section class="kpi-grid">
+      <div class="card">
+        <div class="kpi-label">Global Slack Budget (Safe Polytope Ω)</div>
+        <div class="kpi-value" id="kpi-slack">500 bps</div>
+        <div class="kpi-sub" id="kpi-margin-sub">Gross 10.00% → Net Floor 5.00%</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Six-Pillar Forensic Audits</div>
+        <div class="kpi-value" id="kpi-pillars">0</div>
+        <div class="kpi-sub">P2 O2C • P3 Treasury • P4 RVC • P5 HR/Bio • P6 MKT</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Total Signed Ownership Liability</div>
+        <div class="kpi-value" id="kpi-consumed" style="color: var(--amber);">$0.00</div>
+        <div class="kpi-sub" id="kpi-ledger-count">0 immutable ownership receipts</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">1PB Zero-Copy Extent Epoch</div>
+        <div class="kpi-value" id="kpi-epoch" style="color: var(--blue);">Epoch #1</div>
+        <div class="kpi-sub">64B Cache-Line ABI • FlowExtentDescriptor Verified</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <span>Pillars 2–6 Live Forensic Audits (TODO.rtf Projects 6–10 Stress Simulator)</span>
+        <div class="btn-bar">
+          <button class="btn btn-outline" onclick="triggerPillarSim('P2_O2C')">+ Simulate P2 O2C Leakage</button>
+          <button class="btn btn-outline" onclick="triggerPillarSim('P3_TREASURY')">+ Simulate P3 Covenant Breach</button>
+          <button class="btn btn-outline" onclick="triggerPillarSim('P4_RVC')">+ Simulate P4 USMCA RVC &lt; 60%</button>
+          <button class="btn btn-outline" onclick="triggerPillarSim('P5_HR')">+ Simulate P5 EEOC / Bio-Audit</button>
+          <button class="btn btn-outline" onclick="triggerPillarSim('P6_MKT')">+ Simulate P6 Bot IVT &amp; Ad Inflation</button>
+        </div>
+      </div>
+      <div class="pillar-grid" id="pillar-grid"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <span>Executive Ownership Risk Quotas &amp; Double-Entry Liability Conservation</span>
+        <span class="mono" style="color: var(--muted);">Theorem: ownership_liability_ledger_conservation</span>
+      </div>
+      <div class="exec-grid" id="exec-grid"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <span>Pillar 1 — P2P / Margin Tri-State Forensic Queue &amp; Min-Cut Counterexamples</span>
+        <div class="btn-bar">
+          <button class="btn btn-outline" onclick="simulateMinorBreach()">+ Simulate Soft Breach (+150 bps → VP Override)</button>
+          <button class="btn btn-outline" onclick="simulateCfoBreach()">+ Simulate Major Breach (+380 bps → CFO Override)</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Tx ID &amp; Customer</th>
+            <th>Order Amount</th>
+            <th>Tri-State Status</th>
+            <th>Drift vs Slack Budget</th>
+            <th>Min-Cut Counterfactual Remedy (Options A / B / C)</th>
+            <th>Ownership Override &amp; SoD Action</th>
+          </tr>
+        </thead>
+        <tbody id="tx-tbody"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <span>Immutable Ownership Override Receipt Ledger (SoD Enforced)</span>
+        <span class="mono" style="color: var(--muted);">Theorems: ownership_sod_rejects_self_approval • ownership_tier_escalation_sound</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Tx ID</th>
+            <th>Approving Executive &amp; Role Tier</th>
+            <th>Breach Deficit</th>
+            <th>Attributed Liability</th>
+            <th>Commercial Rationale</th>
+            <th>QSBR Epoch &amp; SHA-256 Signature Token</th>
+          </tr>
+        </thead>
+        <tbody id="ledger-tbody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const fmtUSD = (cents) => '$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById('toast');
+      el.style.borderColor = isError ? 'var(--red)' : 'var(--blue)';
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4200);
+    }
+
+    function badgeClassForStatus(st) {
+      if (st.includes('APPROVED') || st.includes('ALLOWED')) return 'badge-ok';
+      if (st.includes('SUSPENDED')) return 'badge-warn';
+      return 'badge-err';
+    }
+
+    async function loadState() {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+
+      const cp = data.control_plane;
+      document.getElementById('engine-status').textContent =
+        `Pure .lean Kernel • 11 Verified Theorems • QSBR Epoch #${data.qsbr_epoch}`;
+      document.getElementById('kpi-slack').textContent = `${cp.global_slack_budget_bps} bps`;
+      document.getElementById('kpi-margin-sub').textContent =
+        `Gross ${(cp.gross_margin_baseline_bps/100).toFixed(2)}% → Net Floor ${(cp.target_net_margin_floor_bps/100).toFixed(2)}%`;
+      document.getElementById('kpi-pillars').textContent = `${data.pillar_audits.length} Active`;
+
+      const totalLiability = data.executives.reduce((acc, e) => acc + e.attributed_liability_cents, 0);
+      document.getElementById('kpi-consumed').textContent = fmtUSD(totalLiability);
+      document.getElementById('kpi-ledger-count').textContent = `${data.override_audit_log.length} immutable ownership receipts`;
+      document.getElementById('kpi-epoch').textContent = `Epoch #${data.qsbr_epoch}`;
+
+      const pillarGrid = document.getElementById('pillar-grid');
+      pillarGrid.innerHTML = data.pillar_audits.map(p => `
+        <div class="pillar-card">
+          <div class="pillar-header">
+            <div>
+              <div class="pillar-id">${p.pillar} • ${p.audit_id} (Epoch #${p.qsbr_epoch})</div>
+              <div class="pillar-title">${p.title}</div>
+            </div>
+            <span class="badge ${badgeClassForStatus(p.status)}">${p.status}</span>
+          </div>
+          <div class="pillar-advice">${p.min_cut_advice}</div>
+          <div class="pillar-theorem">Theorem: ${p.theorem}</div>
+        </div>
+      `).join('');
+
+      const execGrid = document.getElementById('exec-grid');
+      execGrid.innerHTML = data.executives.map(e => {
+        const total = e.remaining_quota_cents + e.attributed_liability_cents;
+        const pct = total > 0 ? Math.min(100, Math.round((e.attributed_liability_cents / total) * 100)) : 0;
+        return `
+          <div class="card" style="background: var(--panel-alt);">
+            <div style="display:flex; justify-content:space-between; font-weight:600;">
+              <span>${e.name}</span>
+              <span class="badge badge-tier">Tier L${e.role_tier}</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;"></div></div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted);">
+              <span>Signed Liability: <strong style="color:var(--amber)">${fmtUSD(e.attributed_liability_cents)}</strong></span>
+              <span>Remaining Quota: <strong style="color:#56d364">${fmtUSD(e.remaining_quota_cents)}</strong></span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const txTbody = document.getElementById('tx-tbody');
+      txTbody.innerHTML = data.transactions.map(t => {
+        const mc = t.min_cut_remediation;
+        let actionHtml = `<span class="mono" style="color:var(--muted)">Auto-Cleared</span>`;
+        if (t.status === 'SUSPENDED_REQUIRE_OVERRIDE') {
+          const approverId = mc.required_role_tier <= 2 ? 202 : 303;
+          actionHtml = `
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <span class="badge badge-tier">Req: ${mc.required_role_name}</span>
+              <button class="btn btn-amber" onclick="signOverride('${t.tx_id}', ${approverId})">
+                Sign Override &amp; Absorb ${fmtUSD(t.breach_liability_cents)}
+              </button>
+              <button class="btn btn-outline" onclick="signOverride('${t.tx_id}', ${t.creator_id})">
+                Test SoD Self-Approve (Creator #${t.creator_id})
+              </button>
+            </div>
+          `;
+        } else if (t.status === 'OVERRIDDEN_APPROVED' && t.override_receipt) {
+          actionHtml = `<span class="badge badge-ok">✓ Signed by ${t.override_receipt.approver_name}</span>`;
+        } else if (t.status === 'REJECTED_HARD') {
+          actionHtml = `<span class="badge badge-err">HARD BLOCKED</span>`;
+        }
+        return `
+          <tr>
+            <td class="mono"><strong>${t.tx_id}</strong><br/><span style="color:var(--muted)">${t.customer}</span></td>
+            <td class="mono">${fmtUSD(t.order_amount_cents)}</td>
+            <td><span class="badge ${badgeClassForStatus(t.status)}">${t.status}</span></td>
+            <td class="mono">
+              Total Drift: ${t.total_drift_bps} bps (Budget: ${t.global_slack_budget_bps} bps)<br/>
+              Deficit: <strong style="color:var(--amber)">+${t.deficit_bps} bps (${fmtUSD(t.breach_liability_cents)})</strong>
+            </td>
+            <td style="font-size:12px;">
+              • Option A: Cut Sales Rebate by <strong>${mc.option_a_reduce_rebate_bps} bps</strong><br/>
+              • Option B: Cut Procure Drift by <strong>${mc.option_b_reduce_procure_bps} bps</strong><br/>
+              • Option C: Extend Lead-Time by <strong>+${mc.option_c_extend_lead_time_days} days</strong>
+            </td>
+            <td>${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const ledgerTbody = document.getElementById('ledger-tbody');
+      if (data.override_audit_log.length === 0) {
+        ledgerTbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--muted);">No ownership overrides signed yet. Click "Sign Override & Absorb" above to verify Ownership & SoD.</td></tr>`;
+      } else {
+        ledgerTbody.innerHTML = data.override_audit_log.map(r => `
+          <tr>
+            <td class="mono"><strong>${r.tx_id}</strong></td>
+            <td><strong>${r.approver_name}</strong><br/><span class="badge badge-tier">${r.role_name}</span></td>
+            <td class="mono">+${r.deficit_bps} bps</td>
+            <td class="mono" style="color:var(--amber);"><strong>${fmtUSD(r.attributed_liability_cents)}</strong></td>
+            <td>${r.rationale}</td>
+            <td class="mono" style="color:var(--blue);">Epoch #${r.qsbr_epoch} • ${r.signature_hash}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    async function signOverride(txId, approverId) {
+      const res = await fetch('/api/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx_id: txId,
+          approver_id: approverId,
+          rationale: 'Strategic customer retention override with Min-Cut audit record'
+        })
+      });
+      const out = await res.json();
+      if (out.ok) {
+        showToast(`✓ Ownership Override Signed (${out.receipt.signature_hash}) — Liability ${fmtUSD(out.receipt.attributed_liability_cents)} recorded.`);
+      } else {
+        showToast(`✗ Rejected by Pure .lean Theorem [${out.theorem_violated || 'Policy'}]: ${out.reason}`, true);
+      }
+      loadState();
+    }
+
+    async function simulateMinorBreach() {
+      const id = 'SO-2026-' + Math.floor(200 + Math.random() * 799);
+      await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx_id: id,
+          customer: 'Pacific Automotive Tier-1',
+          order_amount_cents: 20000000,
+          procure_drift_bps: 310,
+          mfg_scrap_bps: 70,
+          sales_rebate_bps: 270,
+          creator_id: 101
+        })
+      });
+      showToast(`Simulated ${id} (+150 bps breach) -> Suspended for VP Override with Min-Cut Remedy`);
+      loadState();
+    }
+
+    async function simulateCfoBreach() {
+      const id = 'PO-2026-' + Math.floor(200 + Math.random() * 799);
+      await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx_id: id,
+          customer: 'CryoQuantum Fab Emergency Lot',
+          order_amount_cents: 50000000,
+          procure_drift_bps: 520,
+          mfg_scrap_bps: 110,
+          sales_rebate_bps: 250,
+          creator_id: 101
+        })
+      });
+      showToast(`Simulated ${id} (+380 bps breach) -> Escalated to C-Suite / CFO Tier`);
+      loadState();
+    }
+
+    async function triggerPillarSim(pillar) {
+      const res = await fetch('/api/evaluate_pillar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pillar })
+      });
+      const out = await res.json();
+      if (out.ok) {
+        showToast(`✓ Pure .lean Audit [${out.audit.pillar}]: ${out.audit.status}`);
+        loadState();
+      }
+    }
+
+    loadState();
+  </script>
+</body>
+</html>
