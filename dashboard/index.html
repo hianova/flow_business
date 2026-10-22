@@ -359,7 +359,7 @@
 
       const cp = data.control_plane;
       document.getElementById('engine-status').textContent =
-        `Pure .lean Kernel • 11 Verified Theorems • QSBR Epoch #${data.qsbr_epoch}`;
+        `Pure .lean Kernel • 15 Verified Theorems • QSBR Epoch #${data.qsbr_epoch}`;
       document.getElementById('kpi-slack').textContent = `${cp.global_slack_budget_bps} bps`;
       document.getElementById('kpi-margin-sub').textContent =
         `Gross ${(cp.gross_margin_baseline_bps/100).toFixed(2)}% → Net Floor ${(cp.target_net_margin_floor_bps/100).toFixed(2)}%`;

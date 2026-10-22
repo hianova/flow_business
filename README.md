@@ -14,12 +14,12 @@
 
 | 防線編號 | 涵蓋模組 | 核心業務場景與防衛機制 | 對應 Pure `.lean` 定理（零 `sorry`） | 目標買家 (C-Suite) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Pillar 1** | **Modules 1–5**<br>P2P 採購防呆、鬆弛預算、最小反例與 Ownership | • **鬆弛預算池（Slack Budget Pool）**：部門年度例外容忍額度守恆<br>• **三態法醫狀態機（Tri-State）**：微幅溢價絕不自動斷單，轉入 `FORENSIC_HOLD`<br>• **最小反例（Min-Cut）**：自動給出「砍數量 $\Delta Q$」或「補預算 $\Delta B$」<br>• **職權分離（SoD）與複式責任帳本** | [`slack_budget_conservation_sound`](src/flow_business.lean)<br>[`forensic_tristate_never_auto_terminates_minor_breach`](src/flow_business.lean)<br>[`min_cut_remediation_restores_polytope`](src/flow_business.lean)<br>[`ownership_sod_rejects_self_approval`](src/flow_business.lean)<br>[`ownership_liability_ledger_conservation`](src/flow_business.lean) | **CFO / CPO / 內控稽核長** |
+| **Pillar 1** | **Modules 1–5**<br>P2P 採購防呆、鬆弛預算、最小反例與 Ownership | • **鬆弛預算池（Slack Budget Pool）**：部門年度例外容忍額度守恆<br>• **三態法醫狀態機（Tri-State）**：微幅溢價絕不自動斷單，轉入 `SUSPENDED_REQUIRE_OVERRIDE`（其餘為 `APPROVED_AUTO` / `REJECTED_HARD`）<br>• **最小反例（Min-Cut）**：自動給出「砍數量 $\Delta Q$」或「補預算 $\Delta B$」<br>• **職權分離（SoD）與複式責任帳本** | [`slack_budget_conservation_sound`](src/flow_business.lean)<br>[`slack_budget_breach_detected`](src/flow_business.lean)<br>[`forensic_tristate_never_auto_terminates_minor_breach`](src/flow_business.lean)<br>[`min_cut_remediation_restores_polytope`](src/flow_business.lean)<br>[`ownership_sod_rejects_self_approval`](src/flow_business.lean)<br>[`ownership_tier_escalation_sound`](src/flow_business.lean)<br>[`ownership_liability_ledger_conservation`](src/flow_business.lean) | **CFO / CPO / 內控稽核長** |
 | **Pillar 2** | **Module 9-I**<br>O2C 訂單到收款與 SLA 動態計價 | • **階梯返利單調性（Rebate Monotonicity）**：跨階梯採購不會因折扣跳階而少付錢<br>• **防漏開票（Zero Revenue Leakage）**：業務多重折扣疊加後低於底線自動攔截<br>• **3PL 延遲 SLA 運費折讓自動扣減** | [`rebate_tier_monotonic_sample`](src/flow_business.lean)<br>[`o2c_invoice_no_revenue_leakage`](src/flow_business.lean) | **CRO / 營收長 / 銷售營運 VP** |
 | **Pillar 3** | **Module 9-II**<br>企業司庫（Treasury）與聯貸財務承諾（Covenants） | • **流動比率防線**：$\text{Current Ratio} \ge 1.20\times$<br>• **最壞匯率衝擊下之利息保障倍數**：$\text{Worst-Case Interest Coverage} \ge 3.50\times$<br>• **提前阻斷技術性交叉違約（Cross-Default）** | [`treasury_covenant_prevents_cross_default`](src/flow_business.lean) | **CFO / 集團司庫長 (Group Treasurer)** |
 | **Pillar 4** | **Module 9-III**<br>跨國供應鏈與關稅原產地（USMCA / RCEP RVC） | • **動態 BOM 區域價值含量（RVC）**：$\text{RVC} = \frac{\text{TV} - \text{VNM}}{\text{TV}} \ge 60.0\%$<br>• **防範供應商零件漲價導致免稅資格失效與海關扣貨** | [`trade_rvc_prevents_customs_seizure`](src/flow_business.lean) | **全球供應鏈 VP / 關務法遵長** |
 | **Pillar 5** | **Modules 6–8**<br>HR 反歧視安全港、Bar-Raiser 校準與生科數據鑑識 | • **EEOC 4/5 法則（80% Rule）**與因果 DAG 後門路徑阻斷<br>• **Oaxaca-Blinder 同工同酬殘差** $\le 1.5\%$<br>• **大廠面試官給分膨脹校準 + Bar-Raiser 一票否決**<br>• **CRediT 學術/研發真實貢獻度與 Western Blot 影像拼接偵測** | [`eeoc_and_oaxaca_safe_harbor_sound`](src/flow_business.lean)<br>[`bar_raiser_and_bio_audit_sound`](src/flow_business.lean) | **CHRO / 法務長 (CLO) / 生技研發長** |
-| **Pillar 6** | **Module 10**<br>數位行銷反作弊（IVT）與銀行金流歸因 | • **5ms 邊緣端無頭爬蟲（Headless Bot）滑鼠熵值過濾**<br>• **銀行入帳減除退貨（Net Bank Truth）之確定性真實 ROAS 核算** | [`marketing_ivt_and_bank_attribution_sound`](src/flow_business.lean) | **CMO / 成長駭客負責人** |
+| **Pillar 6 & Kernel** | **Module 10 & QSBR**<br>數位行銷反作弊（IVT）、銀行金流歸因與 1PB 零拷貝核函數 | • **5ms 邊緣端無頭爬蟲（Headless Bot）滑鼠熵值過濾**<br>• **銀行入帳減除退貨（Net Bank Truth）之確定性真實 ROAS 核算**<br>• **64B 步長零 `@[export]` 核函數錨定** | [`marketing_ivt_and_bank_attribution_sound`](src/flow_business.lean)<br>[`flow_business_kernel_sound`](src/flow_business.lean) | **CMO / 成長駭客負責人** |
 
 ---
 
@@ -28,7 +28,7 @@
 ```text
 flow_business/
 ├── src/
-│   └── flow_business.lean       # 唯一真相源：Pillar 1–6 算子 + 11 條零 sorry 定理 + 1PB 零拷貝核函數
+│   └── flow_business.lean       # 唯一真相源：Pillar 1–6 算子 + 15 條零 sorry 定理 + 1PB 零拷貝核函數
 ├── dashboard/
 │   ├── server.py                # 零外部依賴 Python HTTP API (ctypes 綁定 libflow_business.so + 10 項自檢)
 │   └── index.html               # CFO & Ownership 互動式六大防線戰情室 (Web UI)
@@ -68,5 +68,5 @@ flow_business/
 
 啟動後打開瀏覽器訪問 `http://127.0.0.1:8090` 即可：
 - 即時檢視 **Pillar 1–6 六大企業防線** 的健康狀態、對應買家與 Lean 4 定理。
-- 點擊上方五顆壓力測試按鈕（Simulate O2C Revenue Leakage / FX Covenant Shock / USMCA RVC < 60% / EEOC & Bar-Raiser Audit / Headless Bot IVT Attack）直接呼叫底層 `libflow_business.so` C ABI 算子。
-- 在 **Forensic Tri-State Queue** 測試高管一鍵簽署豁免（`Sign & Absorb Liability`）與職權分離自簽攔截（`Test SoD Self-Sign`）。
+- 點擊上方五顆壓力測試按鈕（Simulate P2 O2C Leakage / Simulate P3 Covenant Breach / Simulate P4 USMCA RVC < 60% / Simulate P5 EEOC / Bio-Audit / Simulate P6 Bot IVT & Ad Inflation）直接呼叫底層 `libflow_business.so` C ABI 算子。
+- 在 **Pillar 1 — P2P / Margin Tri-State Forensic Queue** 測試高管一鍵簽署豁免（`Sign Override & Absorb`）與職權分離自簽攔截（`Test SoD Self-Approve`）。

@@ -77,7 +77,8 @@ class FlowBusinessSidecar:
     def _dispatch_64b_state(self, f0: int, f1: int, f2: int, f3: int,
                             f4: int, f5: int, f6: int, f7: int) -> int:
         """Packs 8 × uint64 (64B cache line) and runs through FLOW QSBR kernel."""
-        packed = struct.pack("<8Q", f0, f1, f2, f3, f4, f5, f6, f7)
+        u64 = lambda x: int(x) & 0xFFFFFFFFFFFFFFFF
+        packed = struct.pack("<8Q", u64(f0), u64(f1), u64(f2), u64(f3), u64(f4), u64(f5), u64(f6), u64(f7))
         out_buf = bytearray(64)
         written = self.engine.process_view(memoryview(bytearray(packed)), memoryview(out_buf))
         assert written == 64
@@ -492,10 +493,14 @@ def run_selftest():
     assert sum(mkt_bot["true_attribution"].values()) == 7_000_000
     print("  ✓ [09/10] P6 Marketing IVT Bot Pixel Blocked & $6M Phantom Ad-Claim Squeezed to $7M Bank Truth")
 
-    # 10. CFO Control Plane Live QSBR Epoch Hot-Swap
+    # 10. CFO Control Plane Live QSBR Epoch Hot-Swap & Negative Boundary Safety
     cp_res = sidecar.update_control_plane(1000, 600, 200, 50, 150)
     assert cp_res["ok"] and cp_res["control_plane"]["global_slack_budget_bps"] == 400
-    print(f"  ✓ [10/10] C-Suite Control Plane Live QSBR Hot-Swap Verified (Slack Budget=400 bps, QSBR Epoch=#{cp_res['qsbr_epoch']})")
+    neg_tx = sidecar.evaluate_order("PO-NEG-001", "Negative Order Test", -500, 100, 20, 30, creator_id=101)
+    assert neg_tx["status"] == "REJECTED_HARD"
+    neg_tr = sidecar.evaluate_treasury_covenant("TR-NEG-001", 15_000_000, 10_000_000, 1_000_000, -1_000_000, 1_000_000)
+    assert neg_tr["status"] == "REJECTED_COVENANT_BREACH"
+    print(f"  ✓ [10/10] C-Suite Control Plane Live QSBR Hot-Swap & Negative Boundary Guard Verified (Slack=400 bps, QSBR Epoch=#{cp_res['qsbr_epoch']})")
 
     sidecar.close()
 
@@ -538,87 +543,92 @@ def run_server(port: int = 8090):
                 self.wfile.write(content)
 
         def do_POST(self):
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
-            parsed = urlparse(self.path)
-            if parsed.path == "/api/order":
-                tx = sidecar.evaluate_order(
-                    tx_id=payload.get("tx_id", f"TX-{int(time.time())}"),
-                    customer=payload.get("customer", "Enterprise Client"),
-                    order_amount_cents=int(payload.get("order_amount_cents", 10_000_000)),
-                    procure_drift_bps=int(payload.get("procure_drift_bps", 200)),
-                    mfg_scrap_bps=int(payload.get("mfg_scrap_bps", 50)),
-                    sales_rebate_bps=int(payload.get("sales_rebate_bps", 150)),
-                    creator_id=int(payload.get("creator_id", 101)),
-                )
-                self._send_json({"ok": True, "tx": tx, "state": sidecar.snapshot()})
-            elif parsed.path == "/api/override":
-                res = sidecar.sign_ownership_override(
-                    tx_id=payload.get("tx_id", ""),
-                    approver_id=int(payload.get("approver_id", 202)),
-                    rationale=payload.get("rationale", "Executive commercial override"),
-                )
-                res["state"] = sidecar.snapshot()
-                self._send_json(res, 200 if res["ok"] else 400)
-            elif parsed.path == "/api/control_plane":
-                res = sidecar.update_control_plane(
-                    gross_margin_bps=int(payload.get("gross_margin_baseline_bps", 1000)),
-                    target_net_floor_bps=int(payload.get("target_net_margin_floor_bps", 500)),
-                )
-                res["state"] = sidecar.snapshot()
-                self._send_json(res, 200 if res["ok"] else 400)
-            elif parsed.path == "/api/evaluate_pillar":
-                p = payload.get("pillar", "")
-                if p == "P2_O2C":
-                    rec = sidecar.evaluate_o2c_invoice(
-                        payload.get("id", f"INV-{int(time.time())}"),
-                        int(payload.get("units", 120000)),
-                        int(payload.get("return_bps", 40)),
-                        int(payload.get("claimed_bps", 600)),
-                        int(payload.get("gross_cents", 50_000_000)),
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("JSON payload must be an object")
+                parsed = urlparse(self.path)
+                if parsed.path == "/api/order":
+                    tx = sidecar.evaluate_order(
+                        tx_id=str(payload.get("tx_id", f"TX-{int(time.time())}")),
+                        customer=str(payload.get("customer", "Enterprise Client")),
+                        order_amount_cents=int(payload.get("order_amount_cents", 10_000_000)),
+                        procure_drift_bps=int(payload.get("procure_drift_bps", 200)),
+                        mfg_scrap_bps=int(payload.get("mfg_scrap_bps", 50)),
+                        sales_rebate_bps=int(payload.get("sales_rebate_bps", 150)),
+                        creator_id=int(payload.get("creator_id", 101)),
                     )
-                elif p == "P3_TREASURY":
-                    rec = sidecar.evaluate_treasury_covenant(
-                        payload.get("id", f"TR-{int(time.time())}"),
-                        int(payload.get("assets_usd", 15000000)),
-                        int(payload.get("liab_usd", 10000000)),
-                        int(payload.get("outflow_usd", 4000000)),
-                        int(payload.get("ebitda_usd", 4000000)),
-                        int(payload.get("interest_usd", 1000000)),
+                    self._send_json({"ok": True, "tx": tx, "state": sidecar.snapshot()})
+                elif parsed.path == "/api/override":
+                    res = sidecar.sign_ownership_override(
+                        tx_id=str(payload.get("tx_id", "")),
+                        approver_id=int(payload.get("approver_id", 202)),
+                        rationale=str(payload.get("rationale", "Executive commercial override")),
                     )
-                elif p == "P4_RVC":
-                    rec = sidecar.evaluate_trade_rvc(
-                        payload.get("id", f"SHP-{int(time.time())}"),
-                        int(payload.get("regional_usd", 5980)),
-                        int(payload.get("total_usd", 10000)),
-                        int(payload.get("req_bps", 6000)),
+                    res["state"] = sidecar.snapshot()
+                    self._send_json(res, 200 if res["ok"] else 400)
+                elif parsed.path == "/api/control_plane":
+                    res = sidecar.update_control_plane(
+                        gross_margin_bps=int(payload.get("gross_margin_baseline_bps", 1000)),
+                        target_net_floor_bps=int(payload.get("target_net_margin_floor_bps", 500)),
                     )
-                elif p == "P5_HR":
-                    rec = sidecar.evaluate_hr_biotech_audit(
-                        payload.get("id", f"HR-{int(time.time())}"),
-                        int(payload.get("min_rate_bps", 1600)),
-                        int(payload.get("max_rate_bps", 2400)),
-                        int(payload.get("total_gap_bps", 800)),
-                        int(payload.get("explained_bps", 500)),
-                        int(payload.get("candidate_pct", 75)),
-                        bool(payload.get("bar_raiser", True)),
-                        int(payload.get("credit_bps", 4200)),
-                        bool(payload.get("bio_clean", False)),
-                    )
+                    res["state"] = sidecar.snapshot()
+                    self._send_json(res, 200 if res["ok"] else 400)
+                elif parsed.path == "/api/evaluate_pillar":
+                    p = payload.get("pillar", "")
+                    if p == "P2_O2C":
+                        rec = sidecar.evaluate_o2c_invoice(
+                            str(payload.get("id", f"INV-{int(time.time())}")),
+                            int(payload.get("units", 120000)),
+                            int(payload.get("return_bps", 40)),
+                            int(payload.get("claimed_bps", 600)),
+                            int(payload.get("gross_cents", 50_000_000)),
+                        )
+                    elif p == "P3_TREASURY":
+                        rec = sidecar.evaluate_treasury_covenant(
+                            str(payload.get("id", f"TR-{int(time.time())}")),
+                            int(payload.get("assets_usd", 15000000)),
+                            int(payload.get("liab_usd", 10000000)),
+                            int(payload.get("outflow_usd", 4000000)),
+                            int(payload.get("ebitda_usd", 4000000)),
+                            int(payload.get("interest_usd", 1000000)),
+                        )
+                    elif p == "P4_RVC":
+                        rec = sidecar.evaluate_trade_rvc(
+                            str(payload.get("id", f"SHP-{int(time.time())}")),
+                            int(payload.get("regional_usd", 5980)),
+                            int(payload.get("total_usd", 10000)),
+                            int(payload.get("req_bps", 6000)),
+                        )
+                    elif p == "P5_HR":
+                        rec = sidecar.evaluate_hr_biotech_audit(
+                            str(payload.get("id", f"HR-{int(time.time())}")),
+                            int(payload.get("min_rate_bps", 1600)),
+                            int(payload.get("max_rate_bps", 2400)),
+                            int(payload.get("total_gap_bps", 800)),
+                            int(payload.get("explained_bps", 500)),
+                            int(payload.get("candidate_pct", 75)),
+                            bool(payload.get("bar_raiser", True)),
+                            int(payload.get("credit_bps", 4200)),
+                            bool(payload.get("bio_clean", False)),
+                        )
+                    else:
+                        rec = sidecar.evaluate_marketing_attribution(
+                            str(payload.get("id", f"MKT-{int(time.time())}")),
+                            True,
+                            int(payload.get("entropy_bps", 3200)),
+                            True,
+                            int(payload.get("meta_usd", 5000000)),
+                            int(payload.get("google_usd", 6000000)),
+                            int(payload.get("kol_usd", 2000000)),
+                            int(payload.get("bank_usd", 7000000)),
+                        )
+                    self._send_json({"ok": True, "audit": rec, "state": sidecar.snapshot()})
                 else:
-                    rec = sidecar.evaluate_marketing_attribution(
-                        payload.get("id", f"MKT-{int(time.time())}"),
-                        True,
-                        int(payload.get("entropy_bps", 3200)),
-                        True,
-                        int(payload.get("meta_usd", 5000000)),
-                        int(payload.get("google_usd", 6000000)),
-                        int(payload.get("kol_usd", 2000000)),
-                        int(payload.get("bank_usd", 7000000)),
-                    )
-                self._send_json({"ok": True, "audit": rec, "state": sidecar.snapshot()})
-            else:
-                self._send_json({"ok": False, "error": "Unknown endpoint"}, 404)
+                    self._send_json({"ok": False, "error": "Unknown endpoint"}, 404)
+            except (ValueError, TypeError, json.JSONDecodeError, struct.error) as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 400)
 
         def log_message(self, fmt, *args):
             return
