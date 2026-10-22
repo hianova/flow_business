@@ -77,7 +77,11 @@ class FlowBusinessSidecar:
     def _dispatch_64b_state(self, f0: int, f1: int, f2: int, f3: int,
                             f4: int, f5: int, f6: int, f7: int) -> int:
         """Packs 8 × uint64 (64B cache line) and runs through FLOW QSBR kernel."""
-        u64 = lambda x: int(x) & 0xFFFFFFFFFFFFFFFF
+        def u64(x: int) -> int:
+            v = int(x)
+            if v < -(1 << 63) or v >= (1 << 64):
+                raise ValueError(f"64-bit integer out of range: {v}")
+            return v & 0xFFFFFFFFFFFFFFFF
         packed = struct.pack("<8Q", u64(f0), u64(f1), u64(f2), u64(f3), u64(f4), u64(f5), u64(f6), u64(f7))
         out_buf = bytearray(64)
         written = self.engine.process_view(memoryview(bytearray(packed)), memoryview(out_buf))
@@ -129,9 +133,9 @@ class FlowBusinessSidecar:
         total_drift_bps = procure_drift_bps + mfg_scrap_bps + sales_rebate_bps
         deficit_bps = max(0, total_drift_bps - budget_bps)
         projected_net_margin_bps = max(0, gross_bps - total_drift_bps)
-        breach_liability_cents = (order_amount_cents * deficit_bps) // 10000
+        breach_liability_cents = (max(0, order_amount_cents) * deficit_bps) // 10000
 
-        if order_amount_cents <= 0:
+        if order_amount_cents <= 0 or procure_drift_bps < 0 or mfg_scrap_bps < 0 or sales_rebate_bps < 0:
             status = "REJECTED_HARD"
         elif deficit_bps == 0:
             status = "APPROVED_AUTO"
@@ -140,8 +144,8 @@ class FlowBusinessSidecar:
         else:
             status = "REJECTED_HARD"
 
-        min_cut_rebate_reduction_bps = min(sales_rebate_bps, deficit_bps)
-        min_cut_procure_reduction_bps = min(procure_drift_bps, deficit_bps)
+        min_cut_rebate_reduction_bps = min(max(0, sales_rebate_bps), deficit_bps)
+        min_cut_procure_reduction_bps = min(max(0, procure_drift_bps), deficit_bps)
         min_cut_lead_time_days = (deficit_bps + 49) // 50
 
         required_tier = 0
@@ -183,13 +187,13 @@ class FlowBusinessSidecar:
                              return_rate_bps: int, claimed_discount_bps: int,
                              invoice_gross_cents: int, creator_id: int = 101) -> dict:
         vol_bps = 0 if units_ordered < 10000 else (150 if units_ordered < 50000 else (220 if units_ordered < 100000 else 300))
-        freight_bps = 120 if return_rate_bps <= 50 else 0
+        freight_bps = 120 if 0 <= return_rate_bps <= 50 else 0
         entitled_bps = vol_bps + freight_bps
         leakage_bps = max(0, claimed_discount_bps - entitled_bps)
-        leakage_cents = (invoice_gross_cents * leakage_bps) // 10000
+        leakage_cents = (max(0, invoice_gross_cents) * leakage_bps) // 10000
 
         ep = self._dispatch_64b_state(invoice_gross_cents, units_ordered, return_rate_bps, claimed_discount_bps, entitled_bps, leakage_bps, creator_id, 0)
-        status = "APPROVED_AUTO" if leakage_bps == 0 else "SUSPENDED_REQUIRE_OVERRIDE"
+        status = "APPROVED_AUTO" if (leakage_bps == 0 and invoice_gross_cents > 0 and units_ordered >= 0 and return_rate_bps >= 0 and claimed_discount_bps >= 0) else "SUSPENDED_REQUIRE_OVERRIDE"
         rec = {
             "audit_id": invoice_id,
             "pillar": "P2_O2C_INVOICE",
@@ -216,16 +220,16 @@ class FlowBusinessSidecar:
                                    current_liabilities_usd: int, proposed_outflow_usd: int,
                                    ebitda_after_fx_usd: int, interest_expense_usd: int) -> dict:
         post_assets = max(0, current_assets_usd - proposed_outflow_usd)
-        cr_ok = (current_assets_usd >= proposed_outflow_usd) and (post_assets * 100 >= current_liabilities_usd * 120)
-        icr_ok = ebitda_after_fx_usd * 10 >= interest_expense_usd * 35
-        min_req_assets = (current_liabilities_usd * 120 + 99) // 100
+        cr_ok = (current_liabilities_usd > 0) and (proposed_outflow_usd >= 0) and (current_assets_usd >= proposed_outflow_usd) and (post_assets * 100 >= current_liabilities_usd * 120)
+        icr_ok = (interest_expense_usd > 0) and (ebitda_after_fx_usd * 10 >= interest_expense_usd * 35)
+        min_req_assets = (max(0, current_liabilities_usd) * 120 + 99) // 100
         max_safe_outflow = max(0, current_assets_usd - min_req_assets)
         min_cut_reduction_usd = max(0, proposed_outflow_usd - max_safe_outflow)
 
         ep = self._dispatch_64b_state(current_assets_usd, current_liabilities_usd, proposed_outflow_usd, ebitda_after_fx_usd, interest_expense_usd, min_cut_reduction_usd, 0, 0)
         status = "APPROVED_AUTO" if (cr_ok and icr_ok) else "REJECTED_COVENANT_BREACH"
-        post_cr = (post_assets / current_liabilities_usd) if current_liabilities_usd else 0.0
-        icr = (ebitda_after_fx_usd / interest_expense_usd) if interest_expense_usd else 0.0
+        post_cr = (post_assets / current_liabilities_usd) if current_liabilities_usd > 0 else 0.0
+        icr = (ebitda_after_fx_usd / interest_expense_usd) if interest_expense_usd > 0 else 0.0
         rec = {
             "audit_id": transfer_id,
             "pillar": "P3_TREASURY_COVENANT",
@@ -249,10 +253,10 @@ class FlowBusinessSidecar:
     # =========================================================================
     def evaluate_trade_rvc(self, shipment_id: str, regional_bom_usd: int,
                            total_bom_usd: int, required_rvc_bps: int = 6000) -> dict:
-        rvc_bps = (regional_bom_usd * 10000) // total_bom_usd if total_bom_usd > 0 else 0
-        compliant = total_bom_usd > 0 and (regional_bom_usd * 10000 >= total_bom_usd * required_rvc_bps)
-        req_regional = (total_bom_usd * required_rvc_bps + 9999) // 10000
-        min_cut_swap_usd = max(0, req_regional - regional_bom_usd)
+        rvc_bps = (max(0, regional_bom_usd) * 10000) // total_bom_usd if total_bom_usd > 0 else 0
+        compliant = total_bom_usd > 0 and 0 <= regional_bom_usd <= total_bom_usd and 0 < required_rvc_bps <= 10000 and (regional_bom_usd * 10000 >= total_bom_usd * required_rvc_bps)
+        req_regional = (max(0, total_bom_usd) * max(0, required_rvc_bps) + 9999) // 10000
+        min_cut_swap_usd = max(0, req_regional - max(0, regional_bom_usd))
 
         ep = self._dispatch_64b_state(regional_bom_usd, total_bom_usd, rvc_bps, required_rvc_bps, min_cut_swap_usd, 0, 0, 0)
         status = "APPROVED_AUTO" if compliant else "SUSPENDED_RVC_DEFICIT"
@@ -493,14 +497,22 @@ def run_selftest():
     assert sum(mkt_bot["true_attribution"].values()) == 7_000_000
     print("  ✓ [09/10] P6 Marketing IVT Bot Pixel Blocked & $6M Phantom Ad-Claim Squeezed to $7M Bank Truth")
 
-    # 10. CFO Control Plane Live QSBR Epoch Hot-Swap & Negative Boundary Safety
+    # 10. CFO Control Plane Live QSBR Epoch Hot-Swap & Negative/Overflow Boundary Safety
     cp_res = sidecar.update_control_plane(1000, 600, 200, 50, 150)
     assert cp_res["ok"] and cp_res["control_plane"]["global_slack_budget_bps"] == 400
     neg_tx = sidecar.evaluate_order("PO-NEG-001", "Negative Order Test", -500, 100, 20, 30, creator_id=101)
-    assert neg_tx["status"] == "REJECTED_HARD"
+    assert neg_tx["status"] == "REJECTED_HARD" and neg_tx["breach_liability_cents"] == 0
     neg_tr = sidecar.evaluate_treasury_covenant("TR-NEG-001", 15_000_000, 10_000_000, 1_000_000, -1_000_000, 1_000_000)
     assert neg_tr["status"] == "REJECTED_COVENANT_BREACH"
-    print(f"  ✓ [10/10] C-Suite Control Plane Live QSBR Hot-Swap & Negative Boundary Guard Verified (Slack=400 bps, QSBR Epoch=#{cp_res['qsbr_epoch']})")
+    zero_tr = sidecar.evaluate_treasury_covenant("TR-ZERO-001", 15_000_000, 0, 1_000_000, 4_000_000, 0)
+    assert zero_tr["status"] == "REJECTED_COVENANT_BREACH"
+    overflow_rejected = False
+    try:
+        sidecar.evaluate_order("PO-OVF-001", "Overflow Order Test", 1 << 80, 100, 20, 30, creator_id=101)
+    except ValueError:
+        overflow_rejected = True
+    assert overflow_rejected, "Expected >64-bit integer to raise ValueError"
+    print(f"  ✓ [10/10] C-Suite Control Plane Live QSBR Hot-Swap & Negative/Overflow Boundary Guard Verified (Slack=400 bps, QSBR Epoch=#{cp_res['qsbr_epoch']})")
 
     sidecar.close()
 
@@ -545,6 +557,8 @@ def run_server(port: int = 8090):
         def do_POST(self):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 1_048_576:
+                    raise ValueError("Invalid Content-Length")
                 payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
                 if not isinstance(payload, dict):
                     raise ValueError("JSON payload must be an object")

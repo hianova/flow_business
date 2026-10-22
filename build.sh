@@ -49,7 +49,7 @@ cmd_build() {
     echo "================================================================================"
     echo " [2/2] Compiling Native QSBR Shared Library & Standalone Binary"
     echo "================================================================================"
-    "$CC" -std=c17 -O2 -shared -fPIC -pthread \
+    "$CC" -std=c17 -O2 -shared -fPIC -DFLOW_SHARED_LIB -pthread \
         "$BUILD_DIR/flow_business.c" -o "$BUILD_DIR/libflow_business.so" -lm
     "$CC" -std=c17 -O2 -pthread \
         "$BUILD_DIR/flow_business.c" -o "$BUILD_DIR/flow_business_bin" -lm
