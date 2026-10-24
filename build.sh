@@ -43,6 +43,7 @@ cmd_build() {
         --target-python "$BUILD_DIR/flow_business.py" \
         --target-js "$BUILD_DIR/flow_business.js" \
         --target-cuda "$BUILD_DIR/flow_business.cuh" \
+        --target-ui "$BUILD_DIR/flow_business_ui.html" \
         --target-lean "$BUILD_DIR/flow_business_cert.lean"
 
     echo ""
@@ -61,6 +62,7 @@ cmd_build() {
     echo "  ✓ Python Zero-Copy Mod  : $BUILD_DIR/flow_business.py"
     echo "  ✓ JS/Bun FFI Module     : $BUILD_DIR/flow_business.js"
     echo "  ✓ CUDA Host-Stream Hdr  : $BUILD_DIR/flow_business.cuh"
+    echo "  ✓ Schema-Driven Web UI  : $BUILD_DIR/flow_business_ui.html"
     echo "  ✓ Lean 4 Certificate    : $BUILD_DIR/flow_business_cert.lean"
 }
 

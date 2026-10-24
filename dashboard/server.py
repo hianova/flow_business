@@ -130,10 +130,13 @@ class FlowBusinessSidecar:
             sales_rebate_bps, budget_bps, creator_id, 0, 0
         )
 
-        total_drift_bps = procure_drift_bps + mfg_scrap_bps + sales_rebate_bps
-        deficit_bps = max(0, total_drift_bps - budget_bps)
-        projected_net_margin_bps = max(0, gross_bps - total_drift_bps)
-        breach_liability_cents = (max(0, order_amount_cents) * deficit_bps) // 10000
+        p_bps = max(0, procure_drift_bps)
+        m_bps = max(0, mfg_scrap_bps)
+        s_bps = max(0, sales_rebate_bps)
+        total_drift_bps = self.engine.totalDepartmentDriftBps(p_bps, m_bps, s_bps)
+        deficit_bps = self.engine.slackDeficitBps(p_bps, m_bps, s_bps, max(0, budget_bps))
+        projected_net_margin_bps = self.engine.guaranteedNetMarginBps(max(0, gross_bps), p_bps, m_bps, s_bps)
+        breach_liability_cents = self.engine.computeBreachLiabilityCents(max(0, order_amount_cents), deficit_bps)
 
         if order_amount_cents <= 0 or procure_drift_bps < 0 or mfg_scrap_bps < 0 or sales_rebate_bps < 0:
             status = "REJECTED_HARD"
@@ -144,13 +147,16 @@ class FlowBusinessSidecar:
         else:
             status = "REJECTED_HARD"
 
-        min_cut_rebate_reduction_bps = min(max(0, sales_rebate_bps), deficit_bps)
-        min_cut_procure_reduction_bps = min(max(0, procure_drift_bps), deficit_bps)
-        min_cut_lead_time_days = (deficit_bps + 49) // 50
+        min_cut_rebate_reduction_bps = self.engine.minCutRebateReductionBps(p_bps, m_bps, s_bps, max(0, budget_bps))
+        min_cut_procure_reduction_bps = self.engine.minCutRebateReductionBps(s_bps, m_bps, p_bps, max(0, budget_bps))
+        min_cut_lead_time_days = self.engine.minCutLeadTimeExtensionDays(p_bps, m_bps, s_bps, max(0, budget_bps))
 
         required_tier = 0
         if deficit_bps > 0:
-            required_tier = 1 if deficit_bps <= 100 else (2 if deficit_bps <= 300 else (3 if deficit_bps <= 500 else 99))
+            t1 = self.engine.roleMaxOverrideBps(1)
+            t2 = self.engine.roleMaxOverrideBps(2)
+            t3 = self.engine.roleMaxOverrideBps(3)
+            required_tier = 1 if deficit_bps <= t1 else (2 if deficit_bps <= t2 else (3 if deficit_bps <= t3 else 99))
 
         tx_record = {
             "tx_id": tx_id,
@@ -186,11 +192,9 @@ class FlowBusinessSidecar:
     def evaluate_o2c_invoice(self, invoice_id: str, units_ordered: int,
                              return_rate_bps: int, claimed_discount_bps: int,
                              invoice_gross_cents: int, creator_id: int = 101) -> dict:
-        vol_bps = 0 if units_ordered < 10000 else (150 if units_ordered < 50000 else (220 if units_ordered < 100000 else 300))
-        freight_bps = 120 if 0 <= return_rate_bps <= 50 else 0
-        entitled_bps = vol_bps + freight_bps
-        leakage_bps = max(0, claimed_discount_bps - entitled_bps)
-        leakage_cents = (max(0, invoice_gross_cents) * leakage_bps) // 10000
+        entitled_bps = self.engine.contractualRebateBps(units_ordered, return_rate_bps) if (units_ordered >= 0 and return_rate_bps >= 0) else 0
+        leakage_bps = self.engine.o2cRevenueLeakageBps(claimed_discount_bps, units_ordered, return_rate_bps) if (units_ordered >= 0 and return_rate_bps >= 0) else max(0, claimed_discount_bps)
+        leakage_cents = self.engine.computeBreachLiabilityCents(invoice_gross_cents, leakage_bps)
 
         ep = self._dispatch_64b_state(invoice_gross_cents, units_ordered, return_rate_bps, claimed_discount_bps, entitled_bps, leakage_bps, creator_id, 0)
         status = "APPROVED_AUTO" if (leakage_bps == 0 and invoice_gross_cents > 0 and units_ordered >= 0 and return_rate_bps >= 0 and claimed_discount_bps >= 0) else "SUSPENDED_REQUIRE_OVERRIDE"
@@ -219,15 +223,17 @@ class FlowBusinessSidecar:
     def evaluate_treasury_covenant(self, transfer_id: str, current_assets_usd: int,
                                    current_liabilities_usd: int, proposed_outflow_usd: int,
                                    ebitda_after_fx_usd: int, interest_expense_usd: int) -> dict:
+        valid_inputs = (current_assets_usd >= 0 and current_liabilities_usd > 0 and proposed_outflow_usd >= 0 and ebitda_after_fx_usd >= 0 and interest_expense_usd > 0)
+        covenants_ok = bool(valid_inputs and self.engine.checkTreasuryDebtCovenants(
+            current_assets_usd, current_liabilities_usd, proposed_outflow_usd, ebitda_after_fx_usd, interest_expense_usd
+        ))
+        min_cut_reduction_usd = self.engine.minCutCashOutflowReduction(
+            current_assets_usd, current_liabilities_usd, proposed_outflow_usd
+        )
         post_assets = max(0, current_assets_usd - proposed_outflow_usd)
-        cr_ok = (current_liabilities_usd > 0) and (proposed_outflow_usd >= 0) and (current_assets_usd >= proposed_outflow_usd) and (post_assets * 100 >= current_liabilities_usd * 120)
-        icr_ok = (interest_expense_usd > 0) and (ebitda_after_fx_usd * 10 >= interest_expense_usd * 35)
-        min_req_assets = (max(0, current_liabilities_usd) * 120 + 99) // 100
-        max_safe_outflow = max(0, current_assets_usd - min_req_assets)
-        min_cut_reduction_usd = max(0, proposed_outflow_usd - max_safe_outflow)
 
         ep = self._dispatch_64b_state(current_assets_usd, current_liabilities_usd, proposed_outflow_usd, ebitda_after_fx_usd, interest_expense_usd, min_cut_reduction_usd, 0, 0)
-        status = "APPROVED_AUTO" if (cr_ok and icr_ok) else "REJECTED_COVENANT_BREACH"
+        status = "APPROVED_AUTO" if covenants_ok else "REJECTED_COVENANT_BREACH"
         post_cr = (post_assets / current_liabilities_usd) if current_liabilities_usd > 0 else 0.0
         icr = (ebitda_after_fx_usd / interest_expense_usd) if interest_expense_usd > 0 else 0.0
         rec = {
@@ -253,10 +259,12 @@ class FlowBusinessSidecar:
     # =========================================================================
     def evaluate_trade_rvc(self, shipment_id: str, regional_bom_usd: int,
                            total_bom_usd: int, required_rvc_bps: int = 6000) -> dict:
-        rvc_bps = (max(0, regional_bom_usd) * 10000) // total_bom_usd if total_bom_usd > 0 else 0
-        compliant = total_bom_usd > 0 and 0 <= regional_bom_usd <= total_bom_usd and 0 < required_rvc_bps <= 10000 and (regional_bom_usd * 10000 >= total_bom_usd * required_rvc_bps)
-        req_regional = (max(0, total_bom_usd) * max(0, required_rvc_bps) + 9999) // 10000
-        min_cut_swap_usd = max(0, req_regional - max(0, regional_bom_usd))
+        rvc_bps = self.engine.computeBomRvcBps(regional_bom_usd, total_bom_usd)
+        compliant = bool(
+            total_bom_usd > 0 and 0 <= regional_bom_usd <= total_bom_usd and 0 < required_rvc_bps <= 10000
+            and self.engine.isRvcOriginCompliant(regional_bom_usd, total_bom_usd, required_rvc_bps)
+        )
+        min_cut_swap_usd = self.engine.minCutRegionalSwapValue(regional_bom_usd, total_bom_usd, required_rvc_bps)
 
         ep = self._dispatch_64b_state(regional_bom_usd, total_bom_usd, rvc_bps, required_rvc_bps, min_cut_swap_usd, 0, 0, 0)
         status = "APPROVED_AUTO" if compliant else "SUSPENDED_RVC_DEFICIT"
@@ -286,10 +294,15 @@ class FlowBusinessSidecar:
                                   endowment_explained_bps: int, candidate_pct: int,
                                   bar_raiser_approved: bool, credit_contrib_bps: int,
                                   bio_image_clean: bool) -> dict:
-        eeoc_ok = max_group_rate_bps > 0 and (min_group_rate_bps * 5 >= max_group_rate_bps * 4)
-        unexplained_gap_bps = max(0, total_pay_gap_bps - endowment_explained_bps)
-        oaxaca_ok = unexplained_gap_bps <= self.control_plane["max_oaxaca_residual_bps"]
-        hiring_bio_ok = (candidate_pct > 50) and bar_raiser_approved and (credit_contrib_bps >= 3000) and bio_image_clean
+        eeoc_ok = bool(self.engine.satisfiesFourFifthsRule(min_group_rate_bps, max_group_rate_bps))
+        unexplained_gap_bps = self.engine.oaxacaUnexplainedGapBps(total_pay_gap_bps, endowment_explained_bps)
+        oaxaca_ok = bool(self.engine.isEqualPaySafeHarbor(
+            total_pay_gap_bps, endowment_explained_bps, self.control_plane["max_oaxaca_residual_bps"]
+        ))
+        hiring_bio_ok = bool(
+            self.engine.evaluateHiringAndBioAudit(candidate_pct, bar_raiser_approved, credit_contrib_bps, bio_image_clean)
+            and self.engine.isCausalBusinessNecessity(False, False)
+        )
 
         ep = self._dispatch_64b_state(
             min_group_rate_bps, max_group_rate_bps, unexplained_gap_bps,
@@ -324,14 +337,16 @@ class FlowBusinessSidecar:
                                        canvas_entropy_bps: int, wasm_valid: bool,
                                        meta_claimed_usd: int, google_claimed_usd: int,
                                        kol_claimed_usd: int, bank_settled_usd: int) -> dict:
-        fire_pixel = tls_valid and (canvas_entropy_bps >= 8000) and wasm_valid
-        total_claimed = meta_claimed_usd + google_claimed_usd + kol_claimed_usd
-        phantom_inflation_usd = max(0, total_claimed - bank_settled_usd)
+        fire_pixel = bool(self.engine.shouldFireConversionPixel(tls_valid, canvas_entropy_bps, wasm_valid))
+        total_claimed = self.engine.totalDepartmentDriftBps(meta_claimed_usd, google_claimed_usd, kol_claimed_usd)
+        phantom_inflation_usd = self.engine.computeOverAttributionInflation(
+            meta_claimed_usd, google_claimed_usd, kol_claimed_usd, bank_settled_usd
+        )
 
-        # Deterministic Bank-Truth Attribution (40% / 45% / 15% cryptographic event-chain weights)
-        meta_true = (bank_settled_usd * 40) // 100
-        google_true = (bank_settled_usd * 45) // 100
-        kol_true = bank_settled_usd - meta_true - google_true
+        # Deterministic Bank-Truth Attribution via C17 bankTruthAttributedShare (40% / 45% / 15%)
+        meta_true = self.engine.bankTruthAttributedShare(40, 100, bank_settled_usd)
+        google_true = self.engine.bankTruthAttributedShare(45, 100, bank_settled_usd)
+        kol_true = self.engine.bankTruthAttributedShare(15, 100, bank_settled_usd)
 
         ep = self._dispatch_64b_state(
             int(fire_pixel), canvas_entropy_bps, meta_claimed_usd, google_claimed_usd,
@@ -369,7 +384,7 @@ class FlowBusinessSidecar:
         creator_id = tx["creator_id"]
         role_tier = exec_info["role_tier"]
         deficit_bps = tx["deficit_bps"]
-        liability_cents = tx["breach_liability_cents"]
+        liability_cents = self.engine.computeBreachLiabilityCents(tx["order_amount_cents"], deficit_bps)
         quota_cents = exec_info["remaining_quota_cents"]
 
         if creator_id == approver_id:
@@ -379,7 +394,7 @@ class FlowBusinessSidecar:
                 "reason": "Separation of Duties (SoD) violation: Creator cannot approve their own order.",
             }
 
-        max_bps = ROLE_MAX_OVERRIDE_BPS.get(role_tier, 0)
+        max_bps = self.engine.roleMaxOverrideBps(role_tier)
         if deficit_bps > max_bps:
             return {
                 "ok": False,
@@ -392,6 +407,16 @@ class FlowBusinessSidecar:
                 "ok": False,
                 "theorem_violated": "ownership_liability_ledger_conservation",
                 "reason": f"Insufficient personal risk quota: required ${liability_cents/100:,.2f}, remaining ${quota_cents/100:,.2f}.",
+            }
+
+        c17_authorized = self.engine.canSignOwnershipOverride(
+            creator_id, approver_id, role_tier, deficit_bps, tx["order_amount_cents"], quota_cents
+        )
+        if not c17_authorized:
+            return {
+                "ok": False,
+                "theorem_violated": "ownership_sod_rejects_self_approval",
+                "reason": "C17 canSignOwnershipOverride kernel rejected signature.",
             }
 
         ep = self._dispatch_64b_state(
@@ -434,6 +459,9 @@ class FlowBusinessSidecar:
             "transactions": self.transactions,
             "pillar_audits": self.pillar_audits,
             "override_audit_log": self.override_audit_log,
+            "lean_functions": getattr(self.engine, "LEAN_FUNCTIONS", []),
+            "lean_theorems": getattr(self.engine, "LEAN_THEOREMS", []),
+            "state_fields": getattr(self.engine, "STATE_FIELDS", []),
         }
 
 
